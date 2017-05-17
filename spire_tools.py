@@ -7,9 +7,17 @@ import numpy as np
 
 
 
-
-# Search directory data_dir and all its subdirs for CSV files
 def find_files(data_dir,pattern):
+    """
+    Returns list of files matching pattern in directory data_dir and its subdirectories
+    
+    Args:
+        data_dir (str): directory to search (including subdirectories) for files matching pattern
+        pattern (str): unix-style filename pattern to matching
+        
+    Returns:
+        result (list): List of strings with joined file+path pointing to filenames
+    """
     result = []
     for root, dirs, files in os.walk(data_dir):
         for name in files:
@@ -17,7 +25,17 @@ def find_files(data_dir,pattern):
                 result.append(os.path.join(root, name))
     return result
 
+    
 def aggregate_module_tests(file_names):
+    """
+    Aggregates dataframe of spectra-nova module results for large-format modules
+    
+    Args:
+        file_names (list): list of filename strings to load and aggregrate
+    
+    Returns:
+        df (pandas.DataFrame): dataframe of measurements, stacked such that 1 row = 1 measurement
+    """
     df_list=[]
     for f in file_names:
         d = pd.read_excel(f)
@@ -32,9 +50,16 @@ def aggregate_module_tests(file_names):
     return df
 
 
-
-# Test CSV files to see if they were made on the spire
 def test_iv_measure_type(file_name):
+    """
+    Tests files to see if they were generated on the 8-Inch IV tester, or Spire IV tester
+    
+    Args:
+        file_name (str): string pointing (file or path+file) to file in question
+    
+    Returns:
+        string representing instrument that generated file ('Spire','8-Inch Tester')
+    """
     try:
         with open(file_name) as f:
             first_line = f.readline()
@@ -54,8 +79,16 @@ def test_iv_measure_type(file_name):
         return
 
 
-# return spire file fname as dataframe
 def spire_to_df(fname):
+    """
+    Loads single spire IV parameter measurement file into pandas.DataFrame format
+    
+    Args:
+        fname (str): string pointing (file or path+file) to file in question
+        
+    Returns:
+        dataframe with measurements from file, or nonetype
+    """
     if test_iv_measure_type(fname) == 'SPIRE':
         try:
             df = pd.read_csv(fname, nrows=80, header=None, index_col=0).T
@@ -65,11 +98,20 @@ def spire_to_df(fname):
         df['Source'] = fname
         return df
     else:
-        return
+        return None
 
 
-# return list of spire files fname_list as aggregated dataframe
+
 def spires_to_aggregate_df(fname_list):
+    """
+    Aggregates list of spire files fname_list to pandas.DataFrame
+    
+    Args:
+        fname_list (list): list of spire filenames
+    
+    Returns:
+        dataframe of aggregated results
+    """
     df_list = []
 
     if len(fname_list) > 1:
@@ -86,13 +128,32 @@ def spires_to_aggregate_df(fname_list):
     df['Datetime'] = df[['Date', 'Time']].apply(lambda x: datetime.combine(x['Date'], x['Time']), axis=1)
     return df
 
-# helper function to take a directory data_dir and return a dataframe with all spire files in it
 def spire_df_from_directory(data_dir):
+    """
+    Helper function to take a directory data_dir and return a dataframe with all spire measurements aggregated to dataframe
+    
+    Args:
+        data_dir (str): target directory from which to aggregate measurements - includes subdirectories
+        
+    Returns:
+        pandas.DataFrame with aggregated spire measurements
+    
+    """
     file_list = find_files(data_dir,'*.csv')
     return spires_to_aggregate_df(file_list)
    
-# return spire file fname as dataframe
+
 def char_lab_IV_to_df(fname):
+    """
+    Loads Characterization Lab 8" IV tester file into pandas.DataFrame format
+    
+    Args:
+        fname (str): filename of test file
+    
+    Returns:
+        pandas.DataFrame with measurement, or nonetype if error
+    
+    """
     if test_iv_measure_type(fname) == '8-Inch Tester':
         try:
             df =pd.read_csv(fname, parse_dates=['Date/Time'])
@@ -103,8 +164,17 @@ def char_lab_IV_to_df(fname):
     else:
         return
 
-# function to return an aggregated dataframe from a list of 8 inch char lab IV tester files [fname_list]
+        
 def char_lab_IV_to_aggregate_df(fname_list):
+    """
+    function to return an aggregated dataframe from a list of 8 inch char lab IV tester files [fname_list]
+    
+    Args:
+        fname_list (list): list of files to aggregate, must be of 8" tester type
+        
+    Returns:
+        pandas.DataFrame of aggregated results
+    """
     df_list = []
     if len(fname_list) > 1:
         for f in fname_list:
@@ -120,16 +190,24 @@ def char_lab_IV_to_aggregate_df(fname_list):
 	
 	
 
-# function to calculate a 'loss profile' from a single samples time series dataframe of repeated Spire IV measurements
-# takes a single samples dataframe and returns a single-row dataframe 
 
-# function to calculate a 'loss profile' from a single samples time series dataframe of repeated Spire IV measurements
-# takes a single samples dataframe and returns a single-row dataframe 
 
-def loss_profile_spire(df_uid,kpis,**kwargs):
+def loss_profile_spire(df_uid = None ,kpis = None , order_column = 'Datetime', **kwargs):
+    """
+    Calculates a 'loss profile' from a single samples time series dataframe of repeated Spire IV measurements
+    
+    Args:
+        df_uid (pandas.DataFrame): dataframe corresponding to repeated measurements of some unique sample
+        kpis (list): list of dataframe columns to track, the difference between the initial and final values will be reported
+        order_column (str): dataframe column to sequence measuremnents - e.g., time, date, datetime, stage
+    
+    Returns:
+        dataframe with loss metrics
+    
+    """
     
     # make sure dataframe is sorted by datetime
-    df_uid = df_uid.sort_values(by='Datetime')
+    df_uid = df_uid.sort_values(by = order_column)
     
     # list of metadata to add to the result
     uids = ['Title','ID']
@@ -183,7 +261,7 @@ def loss_profile_spire(df_uid,kpis,**kwargs):
     start_vals.columns = [lbl+', Init.' for lbl in start_vals.columns]
     return pd.concat([loss_profile,start_vals],axis=1,join_axes=[loss_profile.index])
 
-#
+# Clean this up and check if it actually works!
 
 def batch_loss_profile(batch_df, kpis, **kwargs):
     
