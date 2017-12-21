@@ -4,6 +4,7 @@ import sys
 import os
 from datetime import datetime
 import numpy as np
+import re
 
 
 
@@ -332,3 +333,90 @@ def read_spire_IV(filename):
     return t.reset_index(drop=True)
     #################################################################################################################
     #################################################################################################################
+    
+    
+def read_peel(flist):
+        df_list = []
+        for f in flist:
+            df = pd.read_excel(f, sheetname = 'Sheet1', skiprows = 15, parse_dates=False)
+            df.drop(df.columns[4:], axis=1, inplace=True)
+            df = df[df['Units'].astype(str).str.contains('N')]
+            df['Source'] = f.split('\\')[-1].split('.')[0]
+            try:
+                df_list.append(df)
+            except:
+                pass
+        df_concat = pd.concat(df_list)
+        return df_concat
+
+# Spire degradation        
+def degrade(x, p = 'Pmax', comment_col = 'Comment', start_str = 'AS REC', end_str = 'POST 21 DAYS OLS'):
+    
+    try:
+        init = x[x[comment_col].str.contains(start_str)][p].iloc[0]
+    except:
+        init = np.nan
+
+    try:
+        fin = x[x[comment_col].str.contains(end_str)][p].iloc[0]
+    except:
+        fin = np.nan
+    
+        
+    try:
+        resultdict = {'{} Initial'.format(p):init , '{} Final'.format(p):fin, '{} Change, %'.format(p): 100*(fin-init)/init}
+        return pd.Series(resultdict)
+    except:
+        return np.nan
+        
+        
+#### GDOES Utility Functions
+
+# function to load a single GDOES file to a pandas dataframe
+def gdoes_file_to_dataframe(data_dir,fname):
+    # read GDOES file into a dataframe
+    df = pd.read_csv(os.path.join(data_dir,fname),sep='\t',header=0,encoding='utf_16')
+    
+    #Regex pattern to find Lot, downweb, and crossweb
+    search_pattern = re.compile(r'(?P<Lot>[0-9]{4}SA|SB)\D+(?P<Downweb>[0-9]+)[^R0-9]*(?P<Crossweb>R[0-9]|[0-9]+)')
+    
+    # regex search through the filename for Lot, Downweb, and Crossweb Info
+    regex_results = re.search(search_pattern,fname)
+    
+    for attribute in ['Lot','Downweb','Crossweb']:
+        try:
+            df[attribute] = regex_results.group(attribute)
+        except:
+            df[attribute] = 'Failed to Parse'
+
+    #change micron tag to um to make UTF-8 friendly
+    colnames = list(df.columns)
+    colnames[0]='Depth, um'
+    df.columns = colnames
+    
+    #tag results with source file filename
+    df['Source File'] = fname
+    return df
+
+# function to load and concat a set of GDOES files to a dataframe
+def gdoes_lot_to_dataframe(data_dir):
+    #lot_number = str(lot_number)
+    # look through the data directory for filenames containing the Lot# string lot_number
+    file_list = [f for f in os.listdir(data_dir)]
+    
+    #start building up a list of results for the lot
+    data_frame_collection = []
+    
+    # loop through the list of candidate files and load them using the single-file function above
+    for filename in file_list:
+        try:
+        #print('Reading from: '+filename)
+            data_frame_collection.append(gdoes_file_to_dataframe(data_dir,filename))
+        except:
+            print('could not load data from '+filename)
+            continue
+    # if more than one dataframe is found, return a concatenated version        
+    if len(data_frame_collection)>1:
+        return pd.concat(data_frame_collection)
+    else:
+        return data_frame_collection
