@@ -2,9 +2,10 @@ import pandas as pd
 import fnmatch
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 import re
+import matplotlib.pyplot as plt
 
 
 
@@ -335,19 +336,29 @@ def read_spire_IV(filename):
     #################################################################################################################
     
     
-def read_peel(flist):
-        df_list = []
-        for f in flist:
+def read_peel(file_list):
+    """
+    Helper function to load list of peel files into pandas dataframe
+    
+    Args:
+        file_list: list of peel path + filesnames
+    
+    Returns:
+        concatenated dataframe of peel file data
+    """
+    df_list = []
+    for f in file_list:
+        try:
             df = pd.read_excel(f, sheetname = 'Sheet1', skiprows = 15, parse_dates=False)
             df.drop(df.columns[4:], axis=1, inplace=True)
             df = df[df['Units'].astype(str).str.contains('N')]
             df['Source'] = f.split('\\')[-1].split('.')[0]
-            try:
-                df_list.append(df)
-            except:
-                pass
-        df_concat = pd.concat(df_list)
-        return df_concat
+            df['Source Full'] = f
+            df_list.append(df)
+        except:
+            print('Failed to read {}'.format(f.split('\\')[-1]))
+    df_concat = pd.concat(df_list)
+    return df_concat
 
 # Spire degradation        
 def degrade(x, p = 'Pmax', comment_col = 'Comment', start_str = 'AS REC', end_str = 'POST 21 DAYS OLS'):
@@ -420,3 +431,104 @@ def gdoes_lot_to_dataframe(data_dir):
         return pd.concat(data_frame_collection)
     else:
         return data_frame_collection
+        
+    
+def load_weather():
+    
+    files = ['0118rd.txt','0117rd.txt','0116rd.txt']
+    root_dir = "O:\Wise, Adam\weather\cals.arizona.edu azmet weather data"
+
+    weather = []
+
+    for f in files:
+        weather.append(pd.read_csv(os.path.join(root_dir,f),header=None))
+
+    weather = pd.concat(weather)                        
+    weather_cols = pd.read_csv(r"O:\Wise, Adam\weather\cals.arizona.edu azmet weather data\Weather_summary.csv").columns
+    weather.columns = weather_cols[1:-1]
+    weather['Date'] = pd.to_datetime(weather['Year'],format='%Y')+weather['Day of Year (DOY)'].apply(lambda x:timedelta(days=x-1))
+    weather['Date'] = weather['Date'].apply(lambda x: x.date())
+    
+    return weather
+        
+        
+        
+def show_test( test_str, test_title, identifier = 'ID', power_cutoff = [0,999], data = None, fold_labels = True, **kwargs):
+
+    # function to put line breaks into labels
+    def process_string(x):
+        if fold_labels:
+            return x.replace('&','&\n')
+        else:
+            return x
+
+    # make a subplots figure to contain results
+    f, axarr = plt.subplots(ncols = 2 , nrows = 1, figsize = (12,3) )
+    
+    # find serials in the dataset relevant to the keyword provided
+    serials = data[ data.Comment.str.contains( test_str ) ].sort_values('Datetime')[identifier].unique()
+    
+    if 'group_columns' not in kwargs.keys():
+        
+        for lbl, grp in data[(data[identifier].isin(serials)) & (data['Pmax'].between( *power_cutoff ) ) ].sort_values('Datetime').groupby(identifier):
+            
+            axarr[0].plot(grp['Comment'].apply(process_string) ,grp['Pmax'], '.-', label = lbl)    
+            axarr[1].plot(grp['Comment'].apply(process_string) ,grp['Pmax']/grp['Pmax'].iloc[0], '.-', alpha = 0.5, label = lbl)
+            
+            if 'label_serials' not in kwargs.keys():
+                plt.legend([])
+              
+            
+            
+    if 'group_columns' in kwargs.keys():
+        
+        data_subset = data[(data[identifier].isin(serials)) & (data['Pmax'].between( *power_cutoff ) ) ].sort_values('Datetime')
+        line_color_options = [(1,0,0),(0,0,1),(0,0,0)]
+        colors = {c:line_color_options[i] for i,c in enumerate(data_subset[ kwargs['group_columns'][0]].unique())}
+        
+        label_list = []
+        
+        for lbl, grp in data_subset.groupby(kwargs['group_columns']):
+            
+            if lbl[0] in label_list:
+                label_to_show = '_'
+            else:
+                label_to_show = lbl[0]
+                label_list.append(lbl[0])
+            
+            linecolor = colors[lbl[0]] * ( 0.5 + np.random.rand(3)/2 )
+            
+            axarr[0].plot(grp['Comment'].apply(process_string) ,
+                          grp['Pmax'],
+                          '.-',
+                          color = linecolor,
+                          label = label_to_show )
+            
+            axarr[1].plot(grp['Comment'].apply(process_string) ,
+                          grp['Pmax']/grp['Pmax'].iloc[0], '.-',
+                          alpha = 0.5,
+                          color = linecolor,
+                          label = label_to_show )
+            plt.legend()
+        
+        
+    
+    axarr[0].set_ylabel('Pmax, W')
+    axarr[1].set_ylabel('Pmax, Normalized')
+    
+    axarr[1].axhline(1, color = 'black' )
+    
+    for ax in axarr:
+        
+        plt.sca(ax)
+        plt.xticks(rotation=60)
+        plt.grid()
+        
+        if 'label_serials' in kwargs.keys():
+            plt.legend()
+    
+    plt.suptitle(test_title, fontsize = 18)
+
+    plt.show()
+    
+    return serials
