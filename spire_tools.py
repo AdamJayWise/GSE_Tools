@@ -453,6 +453,8 @@ def load_weather():
         
         
         
+import matplotlib.patches as mpatches
+
 def show_test( test_str, test_title, identifier = 'ID', power_cutoff = [0,999], data = None, fold_labels = True, **kwargs):
 
     # function to put line breaks into labels
@@ -478,23 +480,27 @@ def show_test( test_str, test_title, identifier = 'ID', power_cutoff = [0,999], 
             if 'label_serials' not in kwargs.keys():
                 plt.legend([])
               
-            
-            
-    if 'group_columns' in kwargs.keys():
+                      
+    if 'group_column' in kwargs.keys():
         
         data_subset = data[(data[identifier].isin(serials)) & (data['Pmax'].between( *power_cutoff ) ) ].sort_values('Datetime')
-        line_color_options = [(1,0,0),(0,0,1),(0,0,0)]
-        colors = {c:line_color_options[i] for i,c in enumerate(data_subset[ kwargs['group_columns'][0]].unique())}
+        line_color_options = [ (1,0,0), (0,0,1), (0,0,0), (0,1,1), (1,1,0), (1,1,1) ]
+        colors = {c:line_color_options[i] for i,c in enumerate(data_subset[ kwargs['group_column']].unique())}
+        print(colors)
+        
+        patches = [mpatches.Patch(color = v, label = k ) for k,v in colors.items()]
         
         label_list = []
         
-        for lbl, grp in data_subset.groupby(kwargs['group_columns']):
+        for lbl, grp in data_subset.groupby( [kwargs['group_column'], identifier] ):
             
             if lbl[0] in label_list:
-                label_to_show = '_'
-            else:
+                label_to_show = "_"
+            if lbl[0] not in label_list:
                 label_to_show = lbl[0]
                 label_list.append(lbl[0])
+                
+            
             
             linecolor = colors[lbl[0]] * ( 0.5 + np.random.rand(3)/2 )
             
@@ -509,7 +515,9 @@ def show_test( test_str, test_title, identifier = 'ID', power_cutoff = [0,999], 
                           alpha = 0.5,
                           color = linecolor,
                           label = label_to_show )
-            plt.legend()
+        
+        plt.legend( handles = patches )
+        
         
         
     
